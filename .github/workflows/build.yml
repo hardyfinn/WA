@@ -1,0 +1,100 @@
+name: Build plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  RACK_SDK_VERSION: 2.6.4
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: lin-x64
+          - os: macos-14
+            platform: mac-arm64
+          - os: macos-13
+            platform: mac-x64
+          - os: windows-latest
+            platform: win-x64
+    defaults:
+      run:
+        shell: ${{ matrix.platform == 'win-x64' && 'msys2 {0}' || 'bash' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (Windows)
+        if: matrix.platform == 'win-x64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git make zip unzip curl jq zstd
+            mingw-w64-x86_64-gcc
+
+      - name: Install tools (Linux)
+        if: matrix.platform == 'lin-x64'
+        run: sudo apt-get update && sudo apt-get install -y zip unzip jq zstd
+
+      - name: Install tools (macOS)
+        if: startsWith(matrix.platform, 'mac')
+        run: brew install jq zstd || true
+
+      - name: Download Rack SDK
+        run: |
+          curl -fsSL -o sdk.zip "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-${{ matrix.platform }}.zip"
+          unzip -q sdk.zip -d "$HOME/rack-sdk"
+
+      - name: Unit tests
+        if: matrix.platform == 'lin-x64'
+        run: make test RACK_DIR="$HOME/rack-sdk/Rack-SDK"
+
+      - name: Build
+        run: make -j3 dist RACK_DIR="$HOME/rack-sdk/Rack-SDK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wa-${{ matrix.platform }}
+          path: dist/*.vcvplugin
+
+  publish:
+    name: Publish latest build
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move the "latest" tag to this commit
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          git tag -f latest
+          git push -f origin refs/tags/latest
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect files
+        run: mkdir -p out && find artifacts -name '*.vcvplugin' -exec cp {} out/ \; && ls -la out
+      - name: Update the "latest" pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest build from main' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            Built automatically from ${{ github.sha }}.
+            Download the `.vcvplugin` for your computer and drop it onto the VCV Rack window (or put it in your Rack 2 plugins folder).
+          files: out/*.vcvplugin
