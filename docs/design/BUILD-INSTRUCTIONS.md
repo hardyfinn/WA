@@ -1,7 +1,7 @@
 # Build instructions: LATTICE, a melodic lane sequencer for VCV Rack
 
 **Audience:** an Opus model implementing this plugin from scratch in this repository (`hardyfinn/WA`).
-**Owner:** Haer. Haer is fluent in VCV Rack but does **not** read C++. Haer checks each milestone by building and listening in Rack, using the checklists in this file. Write everything a C++ reader would usually be trusted to infer.
+**Owner:** Haer. Haer is fluent in VCV Rack but does **not** read C++. Haer does **not** want milestone check-ins (2026-11-14): build the whole plugin in one go, test it yourself, and hand over the finished result.
 
 **What it is:** one large module, **LATTICE** (48 HP), and one expander, **LATTICE-X** (14 HP). LATTICE is a 3-track melodic sequencer. Every parameter of a step (gate, note, octave, chord, velocity, length, ratchet, two mod CVs) lives on its own **lane** with its own length, clock rate and direction, so the parameters drift against each other. On top of that sit seven newer ideas: pinned dice, roles and an arc, morph space, rule-based generation, call and answer, listening lanes, and gesture-to-lane.
 
@@ -19,12 +19,12 @@
 
 ## 0. Ground rules for the implementer
 
-1. **Build in milestones (§14).** At the end of each one: the plugin compiles with no warnings at `-Wall -Wextra`, all unit tests pass, and you hand Haer a short note: what to install, what to patch, and what they should hear, taken from that milestone's "Haer's checklist".
+1. **Build in the order of §14, without stopping for Haer.** Each stage must compile with no warnings at `-Wall -Wextra` and pass its unit tests before the next starts. The "listening checks" in §14 are for the user manual (`docs/MANUAL.md`, a "Try this" section), not for hand-offs.
 2. **Keep the engine separate from Rack.** All sequencing logic lives in `src/engine/` as plain C++17 with no Rack includes. The Rack `Module` and `ModuleWidget` classes in `src/modules/` are thin wrappers that feed the engine clock edges, CV values and edit commands, and read its outputs. This is what makes unit testing possible.
 3. **No allocation, locks, file I/O or logging in `process()`.** Allocate every buffer in the constructor. Heavy work (rule-based generation, call-and-answer, gesture fitting) runs on a worker thread (§4.3).
 4. **All randomness is seeded and repeatable** (§3.3). The same patch with the same seeds, clock and edits gives identical output.
 5. **Every parameter has a tooltip, a unit and a sensible default.** Every port has a description (`configInput(id, "Name")`, `configOutput`). Right-click menus explain what an option does.
-6. **Don't invent features.** If the spec is ambiguous, pick the simplest reading, write it in `docs/DECISIONS.md`, and tell Haer at the milestone hand-off.
+6. **Don't invent features.** If the spec is ambiguous, pick the simplest reading, write it in `docs/DECISIONS.md`, and list it in the final hand-over.
 7. **CPU budget:** LATTICE with all three tracks running, morph on and the expander attached stays under 2% of one core at 48 kHz on a mid-range 2020 laptop (Rack: View → Show CPU meter).
 8. Don't copy code from other plugins unless their licence is compatible with GPL-3.0-or-later. If you do, credit it in `docs/CREDITS.md`.
 
@@ -79,7 +79,7 @@ WA/
 ### 1.3 plugin.json
 - `slug`: `"Wa"`, `name`: `"Wa"`, `version`: `"2.0.0"`, `license`: `"GPL-3.0-or-later"`, `author`: `"Haer"`.
 - Modules: `Lattice` ("LATTICE", tags `"Sequencer"`, `"Polyphonic"`, `"Random"`, `"Quantizer"`) and `LatticeX` ("LATTICE-X", tags `"Expander"`, `"Sequencer"`).
-- "LATTICE" is a working name. Ask Haer at the first hand-off whether to keep it; renaming only touches display names, not slugs, if done before release.
+- "LATTICE" is a working name. Ask Haer at hand-over whether to keep it; renaming only touches display names, not slugs, if done before release.
 
 ### 1.4 Panels
 - Hand-made SVGs with a hidden **`components` layer** of colour-coded placeholders (red `#ff0000` params, green `#00ff00` inputs, blue `#0000ff` outputs, magenta `#ff00ff` lights, yellow `#ffff00` custom widgets). Generate starting code with `$RACK_DIR/helper.py createmodule Lattice res/Lattice.svg src/modules/Lattice.cpp`.
@@ -518,39 +518,39 @@ Mapping the 0–1 means to the lane: Gate → on if mean > 0.5; Note → `round(
 
 ---
 
-## 14. Milestones
+## 14. Build order
 
-Each milestone ends with: clean build, `make test` passing, `docs/MANUAL.md` updated for what was added, and a hand-off note to Haer with the checklist below.
+Work through these stages in order without check-ins. Each ends with a clean build and `make test` passing. The listening checks go into `docs/MANUAL.md` as "Try this" examples.
 
 ### M1: Core lanes (§2–§6, §7.0 without probability, §10 LANES page, §10.8, §13 basic)
 Tracks, lanes, transport, ratios, directions, scales, chords and poly, outputs, EncoderKnob, display LANES page, save/load.
 Unit tests: ratio timing at 120 BPM (a ×3 lane moves 3 times per base step); pendulum and skip orders; degree→pitch for Major and Pelog including negative degrees; chord channel pitches; swing timing; reset.
-**Haer's checklist:** patch PITCH 1/GATE 1 to a poly voice; set Gate 16 steps, Note 7 steps, Velocity 5 steps → the melody takes 112 steps to repeat; set a Chord step to Triad → three voices sound, all in key; change scale on the SCALE page → notes stay in key; save, reopen → identical.
+**Listening check:** patch PITCH 1/GATE 1 to a poly voice; set Gate 16 steps, Note 7 steps, Velocity 5 steps → the melody takes 112 steps to repeat; set a Chord step to Triad → three voices sound, all in key; change scale on the SCALE page → notes stay in key; save, reopen → identical.
 
 ### M2: Step extras, patterns and songs (§7.0.1, §6.5–6.6, §10.5 STEP/PATTERN/SONG, §10.6)
 Probability, conditions, alt values, slide, accent, nudge, ratchets, ties, sync modes, pattern slots, queueing, songs, FILL, MUTE.
 Unit tests: AofB on pass counts; Pre/NotPre; alt vs hold; negative nudge fires before the boundary; ratchet sub-gate timings and ramps; legato tie keeps gate high; queued change lands on the bar.
-**Haer's checklist:** a Note step at 50 % with an alt value flips between two notes; 2:4 condition plays every other pass; ratchet ×4 ramp up audible; hold FILL → Fill steps appear; build a 3-row song and hear it advance.
+**Listening check:** a Note step at 50 % with an alt value flips between two notes; 2:4 condition plays every other pass; ratchet ×4 ramp up audible; hold FILL → Fill steps appear; build a 3-row song and hear it advance.
 
 ### M3: GEN, KEEP, undo, pinned dice, drift (§7.1)
 Unit tests: same seed + genCount → identical lanes; AMOUNT 25 % changes 4 of 16 steps; pinned steps survive GEN; pinned path replays order; drift cap respected; HOME restores.
-**Haer's checklist:** Shift+GEN at CHARACTER 0.8 → lanes of different lengths drift; hold PIN for one pass of a 60 % probability Gate lane → the rhythm stops changing; KEEP three times → slots 1–3 lit; UNDO after GEN brings the old lane back; DRIFT at 0.5 wanders, HOME returns.
+**Listening check:** Shift+GEN at CHARACTER 0.8 → lanes of different lengths drift; hold PIN for one pass of a 60 % probability Gate lane → the rhythm stops changing; KEEP three times → slots 1–3 lit; UNDO after GEN brings the old lane back; DRIFT at 0.5 wanders, HOME returns.
 
 ### M4: Roles, arc, matrix, performance (§7.2, §9, §10.3)
 Unit tests: arc thresholds and soft edges; density drop order (Tension first); spread factors; each matrix action; freeze replays the last N steps exactly.
-**Haer's checklist:** sweep ARC with a slow LFO → the phrase thins to anchors and fills back; route track 3 ModA (13 steps, ÷2) → Transpose on track 1 Note → melody rises and falls across bars; hold FREEZE → a stutter loop, release → back in time.
+**Listening check:** sweep ARC with a slow LFO → the phrase thins to anchors and fills back; route track 3 ModA (13 steps, ÷2) → Transpose on track 1 Note → melody rises and falls across bars; hold FREEZE → a stutter loop, release → back in time.
 
 ### M5: Morph space (§8)
 Unit tests: weights sum to 1; at a point's exact position the render equals that pattern; discrete steps change one at a time as X moves (monotone set growth for a 2-point line); bake equals render.
-**Haer's checklist:** keep 4 patterns, turn MORPH on, move X/Y slowly with an LFO → the melody changes a note at a time between the four; BAKE, then UNDO.
+**Listening check:** keep 4 patterns, turn MORPH on, move X/Y slowly with an LFO → the melody changes a note at a time between the four; BAKE, then UNDO.
 
 ### M6: Rules GEN and call and answer (§7.3, §7.4, worker §4.3)
 Unit tests: rules output satisfies every rule (property test over 200 seeds); relax order when rules are impossible; Echo/Mirror/Retro/Resolve outputs for a fixed source; recompute triggers on source change; worker never blocks `process()` (time `process()` while a 5000-node search runs).
-**Haer's checklist:** set Contour Arch, intervals 2nd/3rd, End on Root → Shift+GEN gives a phrase that rises, falls and lands home; track 2 ANSWER Resolve from track 1 → track 2 fills the gaps and resolves; change track 1 → the answer follows at the next pass.
+**Listening check:** set Contour Arch, intervals 2nd/3rd, End on Root → Shift+GEN gives a phrase that rises, falls and lands home; track 2 ANSWER Resolve from track 1 → track 2 fills the gaps and resolves; change track 1 → the answer follows at the next pass.
 
 ### M7: Expander, listening lanes, gesture (§11, §12)
 Unit tests: onset detector on a synthetic click train (all clicks found, no doubles within 50 ms); threshold hysteresis; event-driven lane advances by extDiv; gesture real-time and stretch fitting on known ramps.
-**Haer's checklist:** add LATTICE-X; set track 2's Note lane clock to `G1` → track 2's melody moves only when track 1 plays; feed a drum loop into AUDIO and set a Mod lane to `ONS` → the CV steps with the drums; REC a knob gesture onto a Note lane in Real time → the melody follows the hand movement, in key.
+**Listening check:** add LATTICE-X; set track 2's Note lane clock to `G1` → track 2's melody moves only when track 1 plays; feed a drum loop into AUDIO and set a Mod lane to `ONS` → the CV steps with the drums; REC a knob gesture onto a Note lane in Real time → the melody follows the hand movement, in key.
 
 ---
 
@@ -558,4 +558,4 @@ Unit tests: onset detector on a synthetic click train (all clicks found, no doub
 - No drum mode or trigger-per-track drum layout (Haer: melodic only).
 - No zoom/nested steps (idea 2 was not chosen).
 - No MIDI output, no audio generation.
-- No link to the HaerSystemMk1 plugin's KeepProtocol; LATTICE stands alone. (If Haer later wants it, add it as a separate milestone.)
+- No link to the HaerSystemMk1 plugin's KeepProtocol; LATTICE stands alone. (If Haer later wants it, add it as a separate stage.)
